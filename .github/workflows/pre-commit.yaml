@@ -13,8 +13,8 @@ jobs:
     container:
       image: ${{ inputs.docker_image }}
       credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.ghcr_token }}
+        username: avgalani
+        password: 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
     permissions:
       contents: read
       id-token: write
