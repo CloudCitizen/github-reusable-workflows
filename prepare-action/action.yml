@@ -45,7 +45,7 @@ runs:
   - name: Configure AWS credentials for fetching the github token
     uses: aws-actions/configure-aws-credentials@v1.7.0
     with:
-      role-to-assume: arn:aws:iam::544681690406:role/github_token_exchange
+      role-to-assume: arn:aws:iam::860031398530:role/github_token_exchange
       aws-region: eu-west-1
   - name: Get Token
     id: get_token

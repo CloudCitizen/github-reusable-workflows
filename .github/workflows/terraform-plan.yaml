@@ -124,7 +124,7 @@ jobs:
       - name: Configure AWS credentials for Output parameters
         uses: aws-actions/configure-aws-credentials@v1.7.0
         with:
-          role-to-assume: arn:aws:iam::544681690406:role/github_parameter
+          role-to-assume: arn:aws:iam::860031398530:role/github_parameter
           aws-region: ${{ secrets.AWS_REGION }}
       - name: Create AWS profile for Output parameters
         run: |
