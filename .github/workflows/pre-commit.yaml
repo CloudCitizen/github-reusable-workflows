@@ -12,9 +12,6 @@ jobs:
   pre_commit:
     container:
       image: ${{ inputs.docker_image }}
-      credentials:
-        username: avgalani
-        password: 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
     permissions:
       contents: read
       id-token: write
