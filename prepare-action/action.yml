@@ -1,0 +1,73 @@
+name: 'Prepare environment'
+description: 'Sets up prerequisits for workflows'
+inputs:
+  scopes:
+    description: "Scopes for application tokens"
+    required: true
+    type: "string"
+  expose_github_token:
+    description: "Expose github token as environment variable"
+    required: false
+    type: "boolean"
+    default: false
+  github_token_variable:
+    description: "Variable name for github token, if exposed"
+    required: false
+    type: "string"
+    default: "GITHUB_TOKEN"
+  expose_okta_token:
+    description: "Expose okta token as environment variable"
+    required: false
+    type: "boolean"
+    default: false
+  okta_token_variable:
+    description: "Variable name for okta token, if exposed"
+    required: false
+    type: "string"
+    default: "OKTA_TOKEN"
+  checkout:
+    description: "Whether to checkout the repository"
+    required: false
+    type: "boolean"
+    default: true
+outputs:
+  github-token:
+    description: "Github Token"
+    value: ${{ steps.get_token.outputs.github-token }}
+  okta-token:
+    description: "Github Token"
+    value: ${{ steps.get_token.outputs.okta-token }}
+
+
+runs:
+  using: "composite"
+  steps:
+  - name: Configure AWS credentials for fetching the github token
+    uses: aws-actions/configure-aws-credentials@v1.7.0
+    with:
+      role-to-assume: arn:aws:iam::544681690406:role/github_token_exchange
+      aws-region: eu-west-1
+  - name: Get Token
+    id: get_token
+    uses: CloudCitizen/github-action-token@main
+    with:
+      scopes: ${{ inputs.scopes }}
+  - name: Expose Github Token
+    if: ${{ inputs.expose_github_token == 'true' }}
+    shell: sh
+    run: echo "${{ inputs.github_token_variable }}=${{ steps.get_token.outputs.github-token }}" >> $GITHUB_ENV
+  - name: Expose Okta Token
+    if: ${{ inputs.expose_okta_token == 'true' }}
+    shell: sh
+    run: echo "${{ inputs.okta_token_variable }}=${{ steps.get_token.outputs.okta-token }}" >> $GITHUB_ENV
+  - name: Checkout
+    if: ${{ inputs.checkout == 'true' }}
+    uses: actions/checkout@v3
+    with:
+      fetch-depth: 0
+      ref: ${{ github.event.pull_request.head.ref }}
+      token: ${{ steps.get_token.outputs.github-token }}
+  - name: Git config
+    if: steps.get_token.outcome == 'success'
+    shell: sh
+    run: git config --global url."https://oauth2:${{ steps.get_token.outputs.github-token }}@github.com".insteadOf https://github.com

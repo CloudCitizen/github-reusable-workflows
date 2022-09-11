@@ -1,0 +1,246 @@
+on:
+  workflow_call:
+    inputs:
+      file_path:
+        description: "file_path"
+        required: false
+        type: "string"
+        default: "."
+      docker_image:
+        description: 'docker_image'
+        required: false
+        type: 'string'
+        default: 'ghcr.io/cloudcitizen/dockerfiles/build-terraform:0.0.1'
+      readonly_role:
+        description: "Role to assume in AWS for read-only access"
+        required: false
+        type: "string"
+        default: "github_readonly"
+      readwrite_role:
+        description: "Role to assume in AWS for read-write access"
+        required: false
+        type: "string"
+        default: "github_readwrite"
+      scopes:
+        description: "Scope to request for application tokens"
+        required: false
+        type: "string"
+        default: "github:repo_ro"
+      expose_github_token:
+        description: "Expose github token as environment variable"
+        required: false
+        type: "boolean"
+        default: false
+      github_token_variable:
+        description: "Variable name for github token, if exposed"
+        required: false
+        type: "string"
+        default: "GITHUB_TOKEN"
+      expose_okta_token:
+        description: "Expose okta token as environment variable"
+        required: false
+        type: "boolean"
+        default: false
+      okta_token_variable:
+        description: "Variable name for okta token, if exposed"
+        required: false
+        type: "string"
+        default: "OKTA_TOKEN"
+      publish_ssm_parameters:
+        description: "If false, it will opt-out to the publishing of terraform outputs to the SSM Parameter store"
+        required: false
+        type: "boolean"
+        default: true
+    secrets:
+      AWS_ACCOUNT_ID:
+        required: true
+      AWS_REGION:
+        required: true
+      TEAMS_WEBHOOK:
+        required: true
+      TF_VAR_OKTA_API_TOKEN:
+        required: false
+      TF_VAR_AZURE_DEVOPS_PAT:
+        required: false
+      TF_VAR_DATADOG_API_KEY:
+        required: false
+      TF_VAR_DATADOG_APP_KEY:
+        required: false
+      TF_VAR_GITHUB_APP_ID:
+        required: false
+      TF_VAR_GITHUB_APP_PRIVATE_KEY:
+        required: false
+      TF_VAR_OKTA_APP_ID:
+        required: false
+      TF_VAR_OKTA_APP_PRIVATE_KEY:
+        required: false
+      TF_VAR_TEAMS_WEBHOOK:
+        required: false
+      TF_VAR_GES_LICENSE:
+        required: false
+      OKTA_API_CLIENT_ID:
+        required: false
+      OKTA_API_PRIVATE_KEY:
+        required: false
+      OKTA_API_SCOPES:
+        required: false
+      OKTA_API_PRIVATE_KEY_ID:
+        required: false
+      WORKSPACE:
+        required: false
+
+env:
+  TF_VAR_okta_api_token:         ${{ secrets.TF_VAR_OKTA_API_TOKEN }}
+  TF_VAR_azure_devops_pat:       ${{ secrets.TF_VAR_AZURE_DEVOPS_PAT }}
+  TF_VAR_datadog_api_key:        ${{ secrets.TF_VAR_DATADOG_API_KEY }}
+  TF_VAR_datadog_app_key:        ${{ secrets.TF_VAR_DATADOG_APP_KEY }}
+  TF_VAR_github_app_id:          ${{ secrets.TF_VAR_GITHUB_APP_ID }}
+  TF_VAR_github_app_private_key: ${{ secrets.TF_VAR_GITHUB_APP_PRIVATE_KEY }}
+  TF_VAR_okta_app_id:            ${{ secrets.TF_VAR_OKTA_APP_ID }}
+  TF_VAR_okta_app_private_key:   ${{ secrets.TF_VAR_OKTA_APP_PRIVATE_KEY }}
+  TF_VAR_teams_webhook:          ${{ secrets.TF_VAR_TEAMS_WEBHOOK }}
+  TF_VAR_ges_license:            ${{ secrets.TF_VAR_GES_LICENSE }}
+  TF_VAR_is_terraform_plan:      "true"
+  OKTA_API_CLIENT_ID:            ${{ secrets.OKTA_API_CLIENT_ID }}
+  OKTA_API_PRIVATE_KEY:          ${{ secrets.OKTA_API_PRIVATE_KEY }}
+  OKTA_API_SCOPES:               ${{ secrets.OKTA_API_SCOPES }}
+  OKTA_API_PRIVATE_KEY_ID:       ${{ secrets.OKTA_API_PRIVATE_KEY_ID }}
+  WORKSPACE:                     ${{ secrets.WORKSPACE }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.docker_image }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: write
+    steps:
+      - id: prepare
+        uses: CloudCitizen/github-reusable-workflows/prepare-action@main
+        with:
+          scopes: ${{ inputs.scopes }}
+          expose_github_token: ${{ inputs.expose_github_token }}
+          github_token_variable: ${{ inputs.github_token_variable }}
+          expose_okta_token: ${{ inputs.expose_okta_token }}
+          okta_token_variable: ${{ inputs.okta_token_variable }}
+      - name: Configure AWS credentials for Output parameters
+        uses: aws-actions/configure-aws-credentials@v1.7.0
+        with:
+          role-to-assume: arn:aws:iam::544681690406:role/github_parameter
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Create AWS profile for Output parameters
+        run: |
+          aws configure --profile parameters set aws_access_key_id $AWS_ACCESS_KEY_ID
+          aws configure --profile parameters set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+          aws configure --profile parameters set aws_session_token $AWS_SESSION_TOKEN
+          aws configure --profile parameters set region $AWS_REGION
+      - name: Configure AWS credentials for PR role
+        uses: aws-actions/configure-aws-credentials@v1.7.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ inputs.readonly_role }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Terragrunt init
+        id: init
+        run: cd ${{ inputs.file_path }} && terragrunt init --terragrunt-non-interactive
+      - name: Cache terraform builds
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ inputs.file_path }}/**/builds/
+          key: ${{ runner.os }}-build-v2-${{ inputs.file_path }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ runner.os }}-build-v2-${{ inputs.file_path }}-
+      - name: Pre API-Helpers
+        run: |
+          cd ${{ inputs.file_path }}
+          if [ -e "api_helpers/pre-api-helpers-plan.sh" ]; then
+            chmod +x api_helpers/pre-api-helpers-plan.sh
+            ./api_helpers/pre-api-helpers-plan.sh
+          fi
+      - name: Terragrunt plan
+        id: plan
+        shell: bash
+        run: |
+          set +e
+          cd ${{ inputs.file_path }}
+          exec 9>&1
+          OUTPUT=$(terragrunt plan -detailed-exitcode -out plan.json 2>&1 | tee >(cat - >&9))
+          EXITCODE="${PIPESTATUS[0]}"
+          OUTPUT="${OUTPUT//'%'/'%25'}"
+          OUTPUT="${OUTPUT//$'\n'/'%0A'}"
+          OUTPUT="${OUTPUT//$'\r'/'%0D'}"
+          OUTPUT=$(echo "$OUTPUT" | sed 's/\x1B\[[0-9;]\{1,\}[A-Za-z]//g')
+          echo "::set-output name=stdout::$(echo "$OUTPUT")"
+          echo "EXITCODE: $EXITCODE"
+          if [ $EXITCODE -eq 0 ]; then
+            echo "::set-output name=planresult::unchanged"
+          elif [ $EXITCODE -eq 2 ]; then
+            echo "::set-output name=planresult::success"
+          else
+            echo "::set-output name=planresult::error"
+          fi
+      - name: Terragrunt show plan output
+        uses: mathiasvr/command-output@8dbf451add3db114df0114aa5e21a1efef8c5015
+        if: steps.plan.outputs.planresult == 'success'
+        id: plan_output
+        with:
+          run: cd ${{ inputs.file_path }} && terragrunt show -no-color plan.json
+      - name: Comment on PR on success
+        continue-on-error: true
+        uses: actions/github-script@v6
+        if: steps.plan.outputs.planresult == 'success'
+        env:
+          PLAN: "${{ steps.plan_output.outputs.stdout }}"
+        with:
+          script: |
+            const output = `##### Plan` + (('${{ inputs.file_path }}' != '.') ? ' for ${{ inputs.file_path }}' : '') + `:
+            ###### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            ###### Terraform Plan 📖\`${{ steps.plan.outputs.planresult }}\`
+            <details><summary>Show Plan</summary>
+            \`\`\`terraform\n
+            ${process.env.PLAN}
+            \`\`\`
+            </details>
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+      - name: Comment on PR on error
+        uses: actions/github-script@v6
+        if: steps.plan.outputs.planresult == 'error'
+        env:
+          PLAN: "${{ steps.plan.outputs.stdout }}"
+        with:
+          script: |
+            const output = `##### Plan` + (('${{ inputs.file_path }}' != '.') ? ' for ${{ inputs.file_path }}' : '') + `:
+            ###### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            ###### Terraform Plan 📖\`${{ steps.plan.outputs.planresult }}\`
+            <details><summary>Show Error</summary>
+            \`\`\`\n
+            ${process.env.PLAN}
+            \`\`\`
+            </details>
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+      - name: Check Terragrunt Plan
+        if: steps.plan.outputs.planresult == 'error'
+        run: |
+          echo "Terragrunt plan returned ${{ steps.plan.outputs.planresult }}"
+          exit 1
+      - name: Post API-Helpers
+        run: |
+          cd ${{ inputs.file_path }}
+          if [ -e "api_helpers/post-api-helpers-plan.sh" ]; then
+            chmod +x api_helpers/post-api-helpers-plan.sh
+            ./api_helpers/post-api-helpers-plan.sh
+          fi

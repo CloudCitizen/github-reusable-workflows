@@ -1,0 +1,264 @@
+on:
+  workflow_call:
+    inputs:
+      file_path:
+        description: "file_path"
+        required: false
+        type: "string"
+        default: "."
+      docker_image:
+        description: "docker_image"
+        required: false
+        type: "string"
+        default: "ghcr.io/cloudcitizen/dockerfiles/build-terraform:0.0.1"
+      readonly_role:
+        description: "Role to assume in AWS for read-only access"
+        required: false
+        type: "string"
+        default: "github_readonly"
+      readwrite_role:
+        description: "Role to assume in AWS for read-write access"
+        required: false
+        type: "string"
+        default: "github_readwrite"
+      scopes:
+        description: "Scope to request for application tokens"
+        required: false
+        type: "string"
+        default: "github:repo_ro"
+      expose_github_token:
+        description: "Expose github token as environment variable"
+        required: false
+        type: "boolean"
+        default: false
+      github_token_variable:
+        description: "Variable name for github token, if exposed"
+        required: false
+        type: "string"
+        default: "GITHUB_TOKEN"
+      expose_okta_token:
+        description: "Expose okta token as environment variable"
+        required: false
+        type: "boolean"
+        default: false
+      okta_token_variable:
+        description: "Variable name for okta token, if exposed"
+        required: false
+        type: "string"
+        default: "OKTA_TOKEN"
+      publish_ssm_parameters:
+        description: "If false, it will opt-out to the publishing of terraform outputs to the SSM Parameter store"
+        required: false
+        type: "boolean"
+        default: true
+    secrets:
+      AWS_ACCOUNT_ID:
+        required: true
+      AWS_REGION:
+        required: true
+      TEAMS_WEBHOOK:
+        required: true
+      TF_VAR_OKTA_API_TOKEN:
+        required: false
+      TF_VAR_AZURE_DEVOPS_PAT:
+        required: false
+      TF_VAR_DATADOG_API_KEY:
+        required: false
+      TF_VAR_DATADOG_APP_KEY:
+        required: false
+      TF_VAR_GITHUB_APP_ID:
+        required: false
+      TF_VAR_GITHUB_APP_PRIVATE_KEY:
+        required: false
+      TF_VAR_OKTA_APP_ID:
+        required: false
+      TF_VAR_OKTA_APP_PRIVATE_KEY:
+        required: false
+      TF_VAR_TEAMS_WEBHOOK:
+        required: false
+      TF_VAR_GES_LICENSE:
+        required: false
+      OKTA_API_CLIENT_ID:
+        required: false
+      OKTA_API_PRIVATE_KEY:
+        required: false
+      OKTA_API_SCOPES:
+        required: false
+      OKTA_API_PRIVATE_KEY_ID:
+        required: false
+      WORKSPACE:
+        required: false
+
+env:
+  TF_VAR_okta_api_token:         ${{ secrets.TF_VAR_OKTA_API_TOKEN }}
+  TF_VAR_azure_devops_pat:       ${{ secrets.TF_VAR_AZURE_DEVOPS_PAT }}
+  TF_VAR_datadog_api_key:        ${{ secrets.TF_VAR_DATADOG_API_KEY }}
+  TF_VAR_datadog_app_key:        ${{ secrets.TF_VAR_DATADOG_APP_KEY }}
+  TF_VAR_github_app_id:          ${{ secrets.TF_VAR_GITHUB_APP_ID }}
+  TF_VAR_github_app_private_key: ${{ secrets.TF_VAR_GITHUB_APP_PRIVATE_KEY }}
+  TF_VAR_okta_app_id:            ${{ secrets.TF_VAR_OKTA_APP_ID }}
+  TF_VAR_okta_app_private_key:   ${{ secrets.TF_VAR_OKTA_APP_PRIVATE_KEY }}
+  TF_VAR_teams_webhook:          ${{ secrets.TF_VAR_TEAMS_WEBHOOK }}
+  TF_VAR_ges_license:            ${{ secrets.TF_VAR_GES_LICENSE }}
+  TF_VAR_is_terraform_plan:      "false"
+  OKTA_API_CLIENT_ID:            ${{ secrets.OKTA_API_CLIENT_ID }}
+  OKTA_API_PRIVATE_KEY:          ${{ secrets.OKTA_API_PRIVATE_KEY }}
+  OKTA_API_SCOPES:               ${{ secrets.OKTA_API_SCOPES }}
+  OKTA_API_PRIVATE_KEY_ID:       ${{ secrets.OKTA_API_PRIVATE_KEY_ID }}
+  WORKSPACE:                     ${{ secrets.WORKSPACE }}
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.docker_image }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: read
+      actions: read
+    steps:
+      - uses: actions/github-script@v5
+        name: Check if run is allowed
+        with:
+          script: |
+            // Get current run
+            const current_run = await github.request('GET /repos/{owner}/{repo}/actions/runs/{run_id}', {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId
+            })
+            console.log("SHA of current run is " + current_run.data.head_sha)
+            // Get latest run
+            const latest_run = await github.request('GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs', {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: current_run.data.workflow_id,
+              per_page: 1
+            })
+            if (latest_run.data.workflow_runs.length == 0) {
+              console.log("This is the first run of the workflow");
+              return;
+            }
+            console.log("SHA of latest run is " + latest_run.data.workflow_runs[0].head_sha)
+            if (latest_run.data.workflow_runs[0].head_sha != current_run.data.head_sha) {
+                core.setFailed("Attempted to re-run an action on an old codebase. This could inadvertently revert newer commits, and was therefore blocked. You can only re-run the newest action.");
+            }
+      - id: prepare
+        uses: CloudCitizen/github-reusable-workflows/prepare-action@main
+        with:
+          scopes: ${{ inputs.scopes }}
+          expose_github_token: ${{ inputs.expose_github_token }}
+          github_token_variable: ${{ inputs.github_token_variable }}
+          expose_okta_token: ${{ inputs.expose_okta_token }}
+          okta_token_variable: ${{ inputs.okta_token_variable }}
+      - name: Configure AWS credentials for Output parameters
+        uses: aws-actions/configure-aws-credentials@v1.7.0
+        with:
+          role-to-assume: arn:aws:iam::544681690406:role/github_parameter
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Create AWS profile for Output parameters
+        run: |
+          aws configure --profile parameters set aws_access_key_id $AWS_ACCESS_KEY_ID
+          aws configure --profile parameters set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+          aws configure --profile parameters set aws_session_token $AWS_SESSION_TOKEN
+          aws configure --profile parameters set region $AWS_REGION
+      - name: Configure AWS credentials for main branch role
+        uses: aws-actions/configure-aws-credentials@v1.7.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ inputs.readwrite_role }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Terragrunt init
+        id: init
+        run: cd ${{ inputs.file_path }} && terragrunt init --terragrunt-non-interactive
+      - name: Cache terraform builds
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ inputs.file_path }}/**/builds/
+          key: ${{ runner.os }}-build-v2-${{ inputs.file_path }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ runner.os }}-build-v2-${{ inputs.file_path }}-
+      - name: Pre API-Helpers
+        run: |
+          cd ${{ inputs.file_path }}
+          if [ -e "api_helpers/pre-api-helpers-apply.sh" ]; then
+            chmod +x api_helpers/pre-api-helpers-apply.sh
+            ./api_helpers/pre-api-helpers-apply.sh
+          fi
+      - name: Terragrunt apply
+        id: apply
+        run: cd ${{ inputs.file_path }} && terragrunt apply --auto-approve
+      - name: Notify when apply fails
+        if: always() && steps.apply.outcome == 'failure'
+        run: |
+          curl -X POST '${{  secrets.TEAMS_WEBHOOK }}' -d '{
+            "@context": "https://schema.org/extensions",
+            "@type": "MessageCard",
+            "themeColor": "A1051D",
+            "title": "${{ github.repository }} apply has failed",
+            "text": "Author: ${{ github.event.head_commit.author.name }}\n\nCommit: ${{ github.event.head_commit.message }}\n\nClick **View Details** to learn more",
+            "potentialAction": [
+              {
+                "@type": "OpenUri",
+                "name": "View Details",
+                "targets": [
+                  { "os": "default", "uri": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" }
+                ]
+              }
+            ]
+          }'
+          exit 1
+      - name: Post API-Helpers
+        run: |
+          cd ${{ inputs.file_path }}
+          if [ -e "api_helpers/post-api-helpers-apply.sh" ]; then
+            chmod +x api_helpers/post-api-helpers-apply.sh
+            ./api_helpers/post-api-helpers-apply.sh
+          fi
+      - name: Gather outputs
+        run: |
+          cd ${{ inputs.file_path }}
+          mkdir -p $GITHUB_WORKSPACE/tmp/
+          terragrunt output --json > $GITHUB_WORKSPACE/tmp/output.json
+      - name: Generate docs
+        continue-on-error: true
+        run: |
+          cd ${{ inputs.file_path }}
+          if [ "${{ inputs.file_path }}"  = "." ]; then PAGENAME="Home"; else PAGENAME=$(basename "${{ inputs.file_path }}"); fi
+          mkdir -p $GITHUB_WORKSPACE/output/
+          cd $(terragrunt terragrunt-info |grep WorkingDir | cut -d \" -f4)
+          terraform-docs markdown table --output-values --output-values-from $GITHUB_WORKSPACE/tmp/output.json . > $GITHUB_WORKSPACE/output/$PAGENAME.md
+      - name: Publish exports to SSM parameter store
+        if: inputs.publish_ssm_parameters
+        shell: python3 {0}
+        run: |
+          import boto3, os, json
+          prefix = '' if '${{ inputs.file_path }}' == '.' else '/' + os.path.basename("${{ inputs.file_path }}")
+          repo = "${{ github.repository }}".split('/', 1)[1]
+          ssm_path = f"/terraform-output/{repo}{prefix}/"
+          boto3.setup_default_session(profile_name='parameters')
+          client = boto3.client('ssm')
+          tf_parameters = json.load(open(os.environ['GITHUB_WORKSPACE'] + '/tmp/output.json'))
+          tf_parameters = {ssm_path + key: str(parameter['value']) for key, parameter in tf_parameters.items() if parameter['sensitive']==False}
+          ssm_parameters = {}
+          options = {}
+          for _ in range(20): # max
+            response = client.get_parameters_by_path(Path = ssm_path, **options)
+            ssm_parameters.update({parameter['Name']: parameter['Value'] for parameter in response['Parameters']})
+            if 'NextToken' in response:
+              options['NextToken'] = response['NextToken']
+            else:
+              break
+          for key, value in tf_parameters.items():
+            if key not in ssm_parameters or value != ssm_parameters[key]:
+              print('UPDATING parameter', key)
+              client.put_parameter(Name=key, Value=value, Type='String', Overwrite=True)
+          for key, value in ssm_parameters.items():
+            if key not in tf_parameters:
+              print('DELETING parameter', key)
+              client.delete_parameter(Name=key)
+      - uses: actions/upload-artifact@v3
+        with:
+          name: output
+          path: output/
+          if-no-files-found: ignore

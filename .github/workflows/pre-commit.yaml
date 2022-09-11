@@ -1,0 +1,37 @@
+name: Pre-commit
+on:
+  workflow_call:
+    inputs:
+      docker_image:  # id of input
+        description: 'docker_image'
+        required: false
+        type: 'string'
+        default: 'ghcr.io/cloudcitizen/dockerfiles/build-terraform:0.0.1'
+
+jobs:
+  pre_commit:
+    container:
+      image: ${{ inputs.docker_image }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: read
+    runs-on: ubuntu-latest
+    steps:
+      - id: prepare
+        uses: CloudCitizen/github-reusable-workflows/prepare-action@main
+        with:
+          scopes: 'github:self'
+      - name: "Pre commit hook execution"
+        id: pre_commit
+        if: github.event_name == 'pull_request'
+        run: "pre-commit run --all-files --show-diff-on-failure --color=always"
+      - name: Fix pre-commit failure
+        id: fix_pre_commit
+        if: always() && github.event_name == 'pull_request' && steps.pre_commit.outcome == 'failure'
+        run: |
+          git config user.name pre-commit
+          git config user.email pre-commit@github-action
+          git add .
+          git commit -m "commited pre-commit fixes"
+          git push
