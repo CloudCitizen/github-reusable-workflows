@@ -46,7 +46,7 @@ runs:
     uses: aws-actions/configure-aws-credentials@v1.7.0
     with:
       role-to-assume: arn:aws:iam::860031398530:role/github_token_exchange
-      aws-region: eu-west-1
+      aws-region: eu-central-1
   - name: Get Token
     id: get_token
     uses: CloudCitizen/github-action-token@main
