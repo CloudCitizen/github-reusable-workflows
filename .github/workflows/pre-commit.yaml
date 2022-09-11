@@ -12,6 +12,9 @@ jobs:
   pre_commit:
     container:
       image: ${{ inputs.docker_image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.ghcr_token }}
     permissions:
       contents: read
       id-token: write
