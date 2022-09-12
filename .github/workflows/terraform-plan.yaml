@@ -114,11 +114,15 @@ jobs:
             ###### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
             ###### Terraform Plan 📖\`${{ steps.plan.outputs.planresult }}\`
             <details><summary>Show Plan</summary>
+
             \`\`\`terraform\n
             ${process.env.PLAN}
             \`\`\`
+
             </details>
-            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -135,12 +139,16 @@ jobs:
             const output = `##### Plan` + (('${{ inputs.file_path }}' != '.') ? ' for ${{ inputs.file_path }}' : '') + `:
             ###### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
             ###### Terraform Plan 📖\`${{ steps.plan.outputs.planresult }}\`
-            <details><summary>Show Error</summary>
+            <x><summary>Show Error</summary>
+
             \`\`\`\n
             ${process.env.PLAN}
             \`\`\`
+
             </details>
-            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
