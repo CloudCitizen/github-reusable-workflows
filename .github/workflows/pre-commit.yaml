@@ -16,10 +16,14 @@ jobs:
       contents: read
       id-token: write
       packages: read
+      issues: write
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
       - name: "Pre commit hook execution"
         id: pre_commit
         if: github.event_name == 'pull_request'
