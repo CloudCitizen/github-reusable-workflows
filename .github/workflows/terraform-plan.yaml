@@ -21,36 +21,6 @@ on:
         required: false
         type: "string"
         default: "github_readwrite"
-      scopes:
-        description: "Scope to request for application tokens"
-        required: false
-        type: "string"
-        default: "github:repo_ro"
-      expose_github_token:
-        description: "Expose github token as environment variable"
-        required: false
-        type: "boolean"
-        default: false
-      github_token_variable:
-        description: "Variable name for github token, if exposed"
-        required: false
-        type: "string"
-        default: "GITHUB_TOKEN"
-      expose_okta_token:
-        description: "Expose okta token as environment variable"
-        required: false
-        type: "boolean"
-        default: false
-      okta_token_variable:
-        description: "Variable name for okta token, if exposed"
-        required: false
-        type: "string"
-        default: "OKTA_TOKEN"
-      publish_ssm_parameters:
-        description: "If false, it will opt-out to the publishing of terraform outputs to the SSM Parameter store"
-        required: false
-        type: "boolean"
-        default: true
     secrets:
       AWS_ACCOUNT_ID:
         required: true
@@ -58,49 +28,13 @@ on:
         required: true
       TF_VAR_OKTA_API_TOKEN:
         required: false
-      TF_VAR_AZURE_DEVOPS_PAT:
-        required: false
-      TF_VAR_DATADOG_API_KEY:
-        required: false
-      TF_VAR_DATADOG_APP_KEY:
-        required: false
-      TF_VAR_GITHUB_APP_ID:
-        required: false
-      TF_VAR_GITHUB_APP_PRIVATE_KEY:
-        required: false
-      TF_VAR_OKTA_APP_ID:
-        required: false
-      TF_VAR_OKTA_APP_PRIVATE_KEY:
-        required: false
-      TF_VAR_GES_LICENSE:
-        required: false
-      OKTA_API_CLIENT_ID:
-        required: false
-      OKTA_API_PRIVATE_KEY:
-        required: false
-      OKTA_API_SCOPES:
-        required: false
-      OKTA_API_PRIVATE_KEY_ID:
-        required: false
-      WORKSPACE:
+      TF_VAR_GITHUB_TOKEN:
         required: false
 
 env:
   TF_VAR_okta_api_token:         ${{ secrets.TF_VAR_OKTA_API_TOKEN }}
-  TF_VAR_azure_devops_pat:       ${{ secrets.TF_VAR_AZURE_DEVOPS_PAT }}
-  TF_VAR_datadog_api_key:        ${{ secrets.TF_VAR_DATADOG_API_KEY }}
-  TF_VAR_datadog_app_key:        ${{ secrets.TF_VAR_DATADOG_APP_KEY }}
-  TF_VAR_github_app_id:          ${{ secrets.TF_VAR_GITHUB_APP_ID }}
-  TF_VAR_github_app_private_key: ${{ secrets.TF_VAR_GITHUB_APP_PRIVATE_KEY }}
-  TF_VAR_okta_app_id:            ${{ secrets.TF_VAR_OKTA_APP_ID }}
-  TF_VAR_okta_app_private_key:   ${{ secrets.TF_VAR_OKTA_APP_PRIVATE_KEY }}
-  TF_VAR_ges_license:            ${{ secrets.TF_VAR_GES_LICENSE }}
+  TF_VAR_AWS_REGION: ${{ secrets.AWS_REGION }}
   TF_VAR_is_terraform_plan:      "true"
-  OKTA_API_CLIENT_ID:            ${{ secrets.OKTA_API_CLIENT_ID }}
-  OKTA_API_PRIVATE_KEY:          ${{ secrets.OKTA_API_PRIVATE_KEY }}
-  OKTA_API_SCOPES:               ${{ secrets.OKTA_API_SCOPES }}
-  OKTA_API_PRIVATE_KEY_ID:       ${{ secrets.OKTA_API_PRIVATE_KEY_ID }}
-  WORKSPACE:                     ${{ secrets.WORKSPACE }}
 
 jobs:
   plan:
@@ -113,30 +47,11 @@ jobs:
       packages: read
       pull-requests: write
     steps:
-      - id: prepare
-        uses: CloudCitizen/github-reusable-workflows/prepare-action@main
-        with:
-          scopes: ${{ inputs.scopes }}
-          expose_github_token: ${{ inputs.expose_github_token }}
-          github_token_variable: ${{ inputs.github_token_variable }}
-          expose_okta_token: ${{ inputs.expose_okta_token }}
-          okta_token_variable: ${{ inputs.okta_token_variable }}
-      - name: Configure AWS credentials for Output parameters
-        uses: aws-actions/configure-aws-credentials@v1.7.0
-        with:
-          role-to-assume: arn:aws:iam::860031398530:role/github_parameter
-          aws-region: ${{ secrets.AWS_REGION }}
-      - name: Create AWS profile for Output parameters
-        run: |
-          aws configure --profile parameters set aws_access_key_id $AWS_ACCESS_KEY_ID
-          aws configure --profile parameters set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-          aws configure --profile parameters set aws_session_token $AWS_SESSION_TOKEN
-          aws configure --profile parameters set region $AWS_REGION
       - name: Configure AWS credentials for PR role
         uses: aws-actions/configure-aws-credentials@v1.7.0
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ inputs.readonly_role }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ secrets.TF_VAR_AWS_REGION }}
       - name: Terragrunt init
         id: init
         run: cd ${{ inputs.file_path }} && terragrunt init --terragrunt-non-interactive
