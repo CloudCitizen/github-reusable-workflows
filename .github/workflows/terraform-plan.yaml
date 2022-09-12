@@ -33,7 +33,7 @@ on:
 
 env:
   TF_VAR_okta_api_token:         ${{ secrets.TF_VAR_OKTA_API_TOKEN }}
-  TF_VAR_AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_REGION:                    ${{ secrets.AWS_REGION }}
   TF_VAR_is_terraform_plan:      "true"
 
 jobs:
@@ -51,7 +51,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v1.7.0
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ inputs.readonly_role }}
-          aws-region: ${{ secrets.TF_VAR_AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
       - name: Terragrunt init
         id: init
         run: cd ${{ inputs.file_path }} && terragrunt init --terragrunt-non-interactive
