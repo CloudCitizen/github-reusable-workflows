@@ -17,6 +17,7 @@ jobs:
       id-token: write
       packages: read
     runs-on: ubuntu-latest
+    steps:
       - name: "Pre commit hook execution"
         id: pre_commit
         if: github.event_name == 'pull_request'
