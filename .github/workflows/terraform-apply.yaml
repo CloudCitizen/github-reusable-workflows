@@ -47,10 +47,10 @@ jobs:
       packages: read
       pull-requests: write
     steps:
-      - name: Configure AWS credentials for PR role
+      - name: Configure AWS credentials for main branch
         uses: aws-actions/configure-aws-credentials@v1.7.0
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ inputs.readonly_role }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ inputs.readwrite_role }}
           aws-region: ${{ secrets.AWS_REGION }}
       - name: Checkout
         uses: actions/checkout@v3
