@@ -10,7 +10,7 @@ on:
         description: "docker_image"
         required: false
         type: "string"
-        default: "ghcr.io/cloudcitizen/polaris-container-images/build-terragrunt:0.0.1"
+        default: "ghcr.io/cloudcitizen/polaris-container-images/build-terragrunt:0.0.2"
       readonly_role:
         description: "Role to assume in AWS for read-only access"
         required: false

@@ -6,7 +6,7 @@ on:
         description: 'docker_image'
         required: false
         type: 'string'
-        default: 'ghcr.io/cloudcitizen/polaris-container-images/build-terragrunt:0.0.1'
+        default: 'ghcr.io/cloudcitizen/polaris-container-images/build-terragrunt:0.0.2'
 
 jobs:
   pre_commit:
