@@ -52,6 +52,11 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ inputs.readonly_role }}
           aws-region: ${{ secrets.AWS_REGION }}
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
       - name: Terragrunt init
         id: init
         run: cd ${{ inputs.file_path }} && terragrunt init --terragrunt-non-interactive
